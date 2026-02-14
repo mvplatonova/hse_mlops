@@ -1,0 +1,108 @@
+---
+- name: Развертывание FastAPI приложения
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Установить зависимости
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: GPG ключ Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Репозиторий Docker
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Установить Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: yes
+
+    - name: Установить Docker SDK для Python
+      pip:
+        name: docker
+        state: present
+
+    - name: Запустить Docker
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+
+    - name: Создать директорию для приложения
+      file:
+        path: /opt/fastapi_app
+        state: directory
+        mode: '0755'
+
+    - name: Создать main.py
+      copy:
+        dest: /opt/fastapi_app/main.py
+        content: |
+          from fastapi import FastAPI
+          app = FastAPI()
+          
+          @app.get("/")
+          def read_root():
+              return {"message": "Hello, DevOps World!"}
+
+    - name: Создать requirements.txt
+      copy:
+        dest: /opt/fastapi_app/requirements.txt
+        content: |
+          fastapi
+          uvicorn
+
+    - name: Создать Dockerfile
+      copy:
+        dest: /opt/fastapi_app/Dockerfile
+        content: |
+          FROM python:3.9-slim
+          WORKDIR /app
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+          COPY main.py .
+          CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+    - name: Собрать Docker образ
+      community.docker.docker_image:
+        name: fastapi
+        tag: latest
+        build:
+          path: /opt/fastapi_app
+        source: build
+        state: present
+        force_source: yes
+
+    - name: Остановить старый контейнер
+      community.docker.docker_container:
+        name: fastapi_container
+        state: absent
+      ignore_errors: yes
+
+    - name: Запустить контейнер
+      community.docker.docker_container:
+        name: fastapi_container
+        image: fastapi:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "80:8000"
