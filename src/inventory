@@ -1,0 +1,2 @@
+[servers]
+158.160.192.186 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
